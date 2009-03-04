@@ -26,4 +26,4 @@
 
 Author::    <%=author%> <<%=email%>>
 Copyright:: Copyright (c) <%=Time.now.strftime("%Y")%> <%=author%>
-License::   
+License::   MIT
