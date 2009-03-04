@@ -6,6 +6,6 @@ gemclass.split('::')[0...-1].inject('') do |ns, mod|
 end
 result.join("\n")
 %>
-class <%=gemclass%>
-  VERSION = '0.0.1'
+module <%=gemclass%>
+  Version = '0.0.1'
 end
