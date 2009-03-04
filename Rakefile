@@ -38,7 +38,7 @@ RDOC_OPTS = [
 	"--inline-source",
 ]
 
-task :default => [:test]
+task :default => [:spec]
 task :package => [:clean]
 
 desc "Run all specs in spec directory"
