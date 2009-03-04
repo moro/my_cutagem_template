@@ -5,21 +5,28 @@ require 'rake/testtask'
 require 'rake/packagetask'
 require 'rake/gempackagetask'
 require 'rake/rdoctask'
-require 'rake/contrib/rubyforgepublisher'
-require 'rake/contrib/sshpublisher'
 require 'fileutils'
+require 'spec/rake/spectask'
 require 'lib/<%=gempath%>'
 include FileUtils
 
+use_rubyforge = false
 NAME              = "<%=gemname%>"
 AUTHOR            = "<%=author%>"
 EMAIL             = "<%=email%>"
 DESCRIPTION       = "<%=description%>"
-RUBYFORGE_PROJECT = "<%=config['meta_project'] || gemid%>"
-HOMEPATH          = "http://#{RUBYFORGE_PROJECT}.rubyforge.org"
+
+if use_rubyforge
+  require 'rake/contrib/rubyforgepublisher'
+  require 'rake/contrib/sshpublisher'
+  RUBYFORGE_PROJECT = "<%=config['meta_project'] || gemid%>"
+  HOMEPAGE          = "http://#{RUBYFORGE_PROJECT}.rubyforge.org"
+else
+  HOMEPAGE          = "http://github.com/<%= author %>/#{NAME}/"
+end
 BIN_FILES         = %w(  )
 
-VERS              = <%=gemclass%>::VERSION
+VERS              = <%=gemclass%>::Version
 REV = File.read(".svn/entries")[/committed-rev="(d+)"/, 1] rescue nil
 CLEAN.include ['**/.*.sw?', '*.gem', '.config']
 RDOC_OPTS = [
@@ -34,10 +41,10 @@ RDOC_OPTS = [
 task :default => [:test]
 task :package => [:clean]
 
-Rake::TestTask.new("test") do |t|
-	t.libs   << "test"
-	t.pattern = "test/**/*_test.rb"
-	t.verbose = true
+desc "Run all specs in spec directory"
+Spec::Rake::SpecTask.new(:spec) do |t|
+  t.spec_opts = %w[--colour --format progress --loadby --reverse]
+  t.spec_files = FileList['spec/**/*_spec.rb']
 end
 
 spec = Gem::Specification.new do |s|
@@ -51,12 +58,11 @@ spec = Gem::Specification.new do |s|
 	s.description       = DESCRIPTION
 	s.author            = AUTHOR
 	s.email             = EMAIL
-	s.homepage          = HOMEPATH
+	s.homepage          = HOMEPAGE
 	s.executables       = BIN_FILES
-	s.rubyforge_project = RUBYFORGE_PROJECT
+	s.rubyforge_project = RUBYFORGE_PROJECT if use_rubyforge
 	s.bindir            = "bin"
 	s.require_path      = "lib"
-	#s.autorequire       = ""
 	s.test_files        = Dir["test/*_test.rb"]
 
 	#s.add_dependency('activesupport', '>=1.3.1')
@@ -80,11 +86,21 @@ end
 task :install do
 	name = "#{NAME}-#{VERS}.gem"
 	sh %{rake package}
-	sh %{sudo gem install pkg/#{name}}
+	sh %{gem install pkg/#{name}}
 end
 
 task :uninstall => [:clean] do
-	sh %{sudo gem uninstall #{NAME}}
+	sh %{gem uninstall #{NAME}}
+end
+
+desc 'Show information about the gem.'
+task :debug_gem do
+	puts spec.to_ruby
+end
+
+desc 'Update gem spec'
+task :gemspec do
+  open("#{NAME}.gemspec", 'w').write spec.to_ruby
 end
 
 
@@ -102,43 +118,36 @@ Rake::RDocTask.new do |rdoc|
 	end
 end
 
-desc "Publish to RubyForge"
-task :rubyforge => [:rdoc, :package] do
-	require 'rubyforge'
-	Rake::RubyForgePublisher.new(RUBYFORGE_PROJECT, '<%=ENV['USER']%>').upload
+if use_rubyforge
+  desc "Publish to RubyForge"
+  task :rubyforge => [:rdoc, :package] do
+    require 'rubyforge'
+    Rake::RubyForgePublisher.new(RUBYFORGE_PROJECT, '<%=ENV['USER']%>').upload
+  end
+
+  desc 'Package and upload the release to rubyforge.'
+  task :release => [:clean, :package] do |t|
+    v = ENV["VERSION"] or abort "Must supply VERSION=x.y.z"
+    abort "Versions don't match #{v} vs #{VERS}" unless v == VERS
+    pkg = "pkg/#{NAME}-#{VERS}"
+
+    require 'rubyforge'
+    rf = RubyForge.new.configure
+    puts "Logging in"
+    rf.login
+
+    c = rf.userconfig
+  #	c["release_notes"] = description if description
+  #	c["release_changes"] = changes if changes
+    c["preformatted"] = true
+
+    files = [
+      "#{pkg}.tgz",
+      "#{pkg}.gem"
+    ].compact
+
+    puts "Releasing #{NAME} v. #{VERS}"
+    rf.add_release RUBYFORGE_PROJECT, NAME, VERS, *files
+  end
 end
 
-desc 'Package and upload the release to rubyforge.'
-task :release => [:clean, :package] do |t|
-	v = ENV["VERSION"] or abort "Must supply VERSION=x.y.z"
-	abort "Versions don't match #{v} vs #{VERS}" unless v == VERS
-	pkg = "pkg/#{NAME}-#{VERS}"
-
-	require 'rubyforge'
-	rf = RubyForge.new.configure
-	puts "Logging in"
-	rf.login
-
-	c = rf.userconfig
-#	c["release_notes"] = description if description
-#	c["release_changes"] = changes if changes
-	c["preformatted"] = true
-
-	files = [
-		"#{pkg}.tgz",
-		"#{pkg}.gem"
-	].compact
-
-	puts "Releasing #{NAME} v. #{VERS}"
-	rf.add_release RUBYFORGE_PROJECT, NAME, VERS, *files
-end
-
-desc 'Show information about the gem.'
-task :debug_gem do
-	puts spec.to_ruby
-end
-
-desc 'Update gem spec'
-task :gemspec do
-  open("#{NAME}.gemspec", 'w').write spec.to_ruby
-end
